@@ -1,0 +1,167 @@
+.crumb-btn:hover {
+  color: var(--text);
+  background: var(--panel-raised);
+}
+
+.file-row:hover {
+  background: var(--panel-raised);
+}
+
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--panel-raised);
+  color: var(--text);
+  transition: border-color 120ms, background 120ms;
+}
+.toolbar-btn:hover {
+  border-color: var(--accent);
+}
+.toolbar-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0c1512;
+}
+.toolbar-btn.primary:hover {
+  background: var(--accent-hover);
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  padding: 4px;
+  border-radius: 5px;
+  display: inline-flex;
+}
+.icon-btn:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.icon-btn.neutral:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.nav-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.icon-btn:disabled,
+.toolbar-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.dropzone {
+  border: 1.5px dashed var(--border);
+  border-radius: 10px;
+  transition: border-color 150ms, background 150ms;
+}
+.dropzone.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- Responsive layout ---------- */
+
+.mobile-only {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .mobile-only {
+    display: inline-flex;
+  }
+
+  .app-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 200ms ease;
+    box-shadow: 0 0 0 transparent;
+  }
+
+  .app-sidebar.open {
+    transform: translateX(0);
+    box-shadow: 20px 0 40px rgba(0, 0, 0, 0.4);
+  }
+
+  .app-header {
+    padding-left: 14px !important;
+  }
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .sidebar-backdrop.open {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 10, 13, 0.55);
+    z-index: 55;
+  }
+}
+
+/* Hide the "Modified" column once there isn't room for it */
+@media (max-width: 700px) {
+  .col-modified {
+    display: none;
+  }
+}
+
+/* Hide the "Signed in as" label on narrow screens, keep just the username tag */
+@media (max-width: 480px) {
+  .header-hint {
+    display: none;
+  }
+}
+
+/* Hide the "Size" column too on very narrow screens, keep name + actions */
+@media (max-width: 460px) {
+  .col-size {
+    display: none;
+  }
+}
+
+/* Let the preview modal use the full screen on small devices */
+@media (max-width: 560px) {
+  .preview-backdrop {
+    padding: 8px !important;
+  }
+  .preview-panel {
+    height: 100% !important;
+    width: 100% !important;
+    border-radius: 8px !important;
+  }
+}
+
+/* Tighten padding around the file browser on small screens */
+@media (max-width: 480px) {
+  .browser-topbar {
+    padding: 12px !important;
+  }
+  .browser-content {
+    margin: 10px 12px 16px !important;
+  }
+  .file-row {
+    padding: 9px 8px !important;
+  }
+}

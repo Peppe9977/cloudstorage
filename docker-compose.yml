@@ -1,0 +1,49 @@
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: cloudstorage
+      MARIADB_USER: cloudstorage
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: 8h
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: cloudstorage
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: cloudstorage
+      STORAGE_ROOT: /data
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-2048}
+    volumes:
+      - /mnt/hdd/storage:/data
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      # Only reachable from the Pi itself; `tailscale serve` forwards HTTPS here.
+      - "127.0.0.1:8080:80"
+
+volumes:
+  db_data:

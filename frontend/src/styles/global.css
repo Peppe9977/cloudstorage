@@ -1,0 +1,64 @@
+:root {
+  --bg: #12161b;
+  --panel: #191f26;
+  --panel-raised: #212a33;
+  --border: #2a333d;
+  --border-soft: #232b34;
+  --text: #e7ecef;
+  --text-muted: #8b97a3;
+  --text-faint: #5d6772;
+  --accent: #3fc9b4;
+  --accent-hover: #34ab99;
+  --accent-soft: rgba(63, 201, 180, 0.12);
+  --danger: #e2685a;
+  --danger-soft: rgba(226, 104, 90, 0.12);
+  --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --radius: 8px;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+input {
+  font-family: inherit;
+  color: var(--text);
+  background: var(--panel-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
