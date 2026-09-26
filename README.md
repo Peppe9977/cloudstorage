@@ -88,18 +88,181 @@ Open **http://localhost:5173**, log in with the user you created, and you
 should see the file browser. Vite's dev server proxies `/api` requests to
 the backend on port 4000 (see `vite.config.js`), so both need to be running.
 
-## Moving to the Raspberry Pi later- Change `STORAGE_ROOT` in `backend/.env` to the mount point of your external
-  HDD (e.g. `/mnt/hdd/storage`).
-- Run `npm run build` in `frontend/` to produce static files, and serve them
-  either from Express (`express.static`) or behind Nginx/Caddy in front of
-  the API.
-- Access from outside your LAN via Tailscale or Cloudflare Tunnel, as
-  discussed separately — no port forwarding needed.
-- Dockerize once this is all confirmed working natively: one image for the
-  backend (Node + connects out to MySQL, or bundle MySQL as a sidecar
-  container with a docker-compose volume for the HDD mount) and one for the
-  frontend (static build served by Nginx, or skip a separate frontend
-  container entirely and have Express serve the built files).
+## Running on a Raspberry Pi (Docker + Tailscale)
+
+On the Pi everything runs in Docker containers, started by
+`docker-compose.yml`:
+
+```
+Your device (Tailscale) ──HTTPS :443──► tailscale serve (on the Pi, terminates TLS)
+                                            │ HTTP → 127.0.0.1:8080
+                                            ▼
+                        web (nginx :80)  ── /      → React build (static)
+                                         └─ /api/* → backend:4000
+                        backend (Node :4000) ──► db (MariaDB :3306)
+                        backend ──► /data  (= /mnt/hdd/storage on the HDD)
+```
+
+Only `127.0.0.1:8080` is published on the Pi, so the app is **not** reachable
+from your LAN or the internet — only from devices in your Tailscale network.
+No router port forwarding is needed. Files live on the HDD; user accounts live
+in the `db_data` Docker volume.
+
+### 1. Prepare the Pi
+
+Use Raspberry Pi OS 64-bit, then install Docker:
+
+```bash
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER      # log out and back in afterwards
+docker compose version             # check it works
+```
+
+### 2. Format and mount the HDD (ext4)
+
+This **erases the drive**. Check the device name with `lsblk` first (it is
+usually `/dev/sda`, never `mmcblk0`, which is the SD card).
+
+```bash
+sudo umount /dev/sda1 2>/dev/null
+sudo parted /dev/sda --script mklabel gpt mkpart storage ext4 0% 100%
+sudo mkfs.ext4 -L storage /dev/sda1
+sudo mkdir -p /mnt/hdd
+sudo blkid /dev/sda1               # copy the UUID
+```
+
+Add to `/etc/fstab` (`nofail` lets the Pi boot even if the drive is missing):
+
+```
+UUID=<the-uuid>  /mnt/hdd  ext4  defaults,nofail  0  2
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo mount -a
+sudo mkdir -p /mnt/hdd/storage
+sudo chown -R 1000:1000 /mnt/hdd/storage    # uid 1000 = the "node" user in the container
+```
+
+Make Docker wait for the drive at boot, so files are never written to the SD
+card by mistake. Run `sudo systemctl edit docker` and add:
+
+```ini
+[Unit]
+RequiresMountsFor=/mnt/hdd
+```
+
+### 3. Get the code and configure it
+
+```bash
+git clone https://github.com/Peppe9977/cloudstorage.git
+cd cloudstorage
+cp .env.example .env
+nano .env
+```
+
+Set `DB_ROOT_PASSWORD`, `DB_PASSWORD` and `JWT_SECRET` to strong, different
+values (`openssl rand -hex 32` generates a good one). `.env` is never
+committed to git.
+
+### 4. Build and start
+
+```bash
+docker compose up -d --build
+docker compose ps                   # all three services running, db "healthy"
+docker compose logs -f backend      # Ctrl+C to leave
+```
+
+The first build takes several minutes on a Pi. The `users` table is created
+automatically on first start (`docker/db-init/01-schema.sql`).
+
+Create your first user (see step 2 of the Ubuntu setup for the root-folder
+option):
+
+```bash
+docker compose exec backend node create-user.js alice "a-strong-password"
+```
+
+### 5. HTTPS with Tailscale
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo systemctl enable --now tailscaled
+sudo tailscale up
+```
+
+In the Tailscale admin console (login.tailscale.com) enable **MagicDNS** and
+**HTTPS Certificates** under DNS. Then publish the app on your tailnet:
+
+```bash
+sudo tailscale serve --bg --https=443 http://127.0.0.1:8080
+tailscale serve status
+```
+
+Open `https://<your-pi>.<your-tailnet>.ts.net` from any device signed in to
+your tailnet. Tailscale obtains and renews the Let's Encrypt certificate by
+itself. Do **not** use `tailscale funnel`, which would publish the app to the
+whole internet.
+
+### 6. Start automatically after a power cut
+
+Every service has `restart: unless-stopped`, so Docker brings the containers
+back at every boot. Make sure Docker and Tailscale start at boot too:
+
+```bash
+sudo systemctl enable docker containerd tailscaled
+```
+
+Test with `sudo reboot`, then check `docker compose ps`, `df -h /mnt/hdd`
+(it must show the HDD) and `tailscale serve status`.
+
+### Updating the code
+
+The code is baked into the Docker images, so editing files on the Pi has no
+effect until you rebuild. The usual workflow:
+
+1. Change and test on your PC (Ubuntu/WSL) with `npm run dev`.
+2. Commit and push:
+   ```bash
+   git add .
+   git commit -m "Describe the change"
+   git push
+   ```
+3. On the Pi, pull and rebuild:
+   ```bash
+   cd ~/cloudstorage
+   git pull
+   docker compose up -d --build
+   ```
+
+Only images whose files changed are rebuilt, and only their containers are
+recreated (a few seconds of downtime). Your database and files are untouched.
+To rebuild a single service: `docker compose up -d --build backend` (API) or
+`docker compose up -d --build web` (frontend).
+
+Special cases:
+
+- **Only `.env` changed:** run `docker compose up -d` (no rebuild needed).
+- **Database schema changes:** `docker/db-init/*.sql` only runs when the
+  database volume is empty, so editing it does not change an existing
+  database. Apply the change by hand, e.g.
+  `docker compose exec db mariadb -uroot -p cloudstorage -e "ALTER TABLE users ADD COLUMN ..."`,
+  and update `01-schema.sql` so fresh installs match.
+- **Disk space:** old images pile up on the SD card; clean them with
+  `docker image prune -f`.
+- **Something broke:** `docker compose logs -f backend`, or go back with
+  `git checkout <previous-commit>` and rebuild.
+- **Never run `docker compose down -v`** — `-v` deletes the database volume
+  (and with it all users).
+
+### Backing up the users
+
+Files are on the HDD, but accounts are in the `db_data` volume on the SD card.
+Dump them now and then:
+
+```bash
+docker compose exec db mariadb-dump -uroot -p cloudstorage > users.sql
+```
 
 ## Security notes for this demo
 
@@ -135,6 +298,5 @@ the backend on port 4000 (see `vite.config.js`), so both need to be running.
   *your* personal storage, not a public sign-up app.
 
 What's still worth adding before this is reachable from the open internet:
-HTTPS (Cloudflare Tunnel or Caddy give you this for free), restricting CORS
-to your actual frontend origin instead of `*`, and a shorter JWT expiry with
+HTTPS (the Raspberry Pi setup above gets it from Tailscale) and a shorter JWT expiry with
 refresh if you want tighter session control.
