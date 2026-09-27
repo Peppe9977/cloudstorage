@@ -293,6 +293,15 @@ docker compose exec db mariadb-dump -uroot -p cloudstorage > users.sql
 - **Brute force**: `/api/auth/login` is now rate-limited (10 attempts per
   15 minutes per IP) via `express-rate-limit`, on top of bcrypt already
   making each individual guess slow to compute.
+- **Video/audio streaming**: `<video>`/`<audio>` elements fetch their own
+  `src` and can't attach our normal `Authorization` header, so putting the
+  real login JWT in that URL would have been a genuine downgrade. Instead,
+  `POST /api/files/view-token` mints a short-lived (2h) capability token
+  scoped to exactly one file (`purpose: 'view'`, that file's path baked in),
+  accepted only by `GET /api/files/view`. It's rejected by every other route
+  and by `/view` itself for any other path, so a leaked link only ever
+  exposes the one file it was minted for, for a limited time — never account
+  access.
 - There's no public self-registration endpoint on purpose — users are
   created via `create-user.js` on the server, since this is meant to be
   *your* personal storage, not a public sign-up app.

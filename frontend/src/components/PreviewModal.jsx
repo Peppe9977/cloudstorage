@@ -35,11 +35,36 @@ export default function PreviewModal({ entry, path, onClose, onPrev, onNext, pos
     else if (deltaX < -SWIPE_THRESHOLD && onNext) onNext();
   }
 
-  // Images/video/audio/PDF: fetch the file with our normal auth header and
-  // turn it into a local blob URL — the token never touches a URL, browser
-  // history, or server logs.
+  // Video/audio: point the element straight at /files/view with a
+  // short-lived, single-file view token, so the browser streams and seeks
+  // the file natively instead of us buffering the whole thing into memory
+  // first (see api.viewToken).
   useEffect(() => {
-    if (!['image', 'video', 'audio', 'pdf'].includes(kind)) return;
+    if (!['video', 'audio'].includes(kind)) return;
+    setMediaUrl(null);
+    setMediaError(null);
+    let cancelled = false;
+
+    api
+      .viewToken(path)
+      .then(({ token }) => {
+        if (cancelled) return;
+        setMediaUrl(`/api/files/view?path=${encodeURIComponent(path)}&token=${encodeURIComponent(token)}`);
+      })
+      .catch((err) => setMediaError(err.message || 'Could not load file'));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [kind, path]);
+
+  // Images/PDF: small enough that fetching the whole file up front with our
+  // normal auth header (never in a URL) and turning it into a local blob is
+  // simpler than streaming, and just as fast in practice.
+  useEffect(() => {
+    if (!['image', 'pdf'].includes(kind)) return;
+    setMediaUrl(null);
+    setMediaError(null);
     let objectUrl = null;
     let cancelled = false;
 

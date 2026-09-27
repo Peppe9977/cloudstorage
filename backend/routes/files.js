@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const exifr = require('exifr');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, signViewToken, authenticateView } = require('../middleware/auth');
 const {
   STORAGE_ROOT,
   resolveUserRoot,
@@ -14,7 +14,15 @@ const {
 } = require('../utils/fsHelpers');
 
 const router = express.Router();
-router.use(requireAuth);
+
+// Every route requires the normal login session (Authorization header),
+// except /view, which additionally accepts a short-lived, single-file view
+// token via ?token=... — needed so a <video>/<audio> element can stream a
+// file directly (it can't attach a custom header to its own request).
+router.use((req, res, next) => {
+  if (req.path === '/view') return authenticateView(req, res, next);
+  return requireAuth(req, res, next);
+});
 
 // Every route below only ever touches req.userRoot, never STORAGE_ROOT
 // directly — that's what confines each user to their configured folder
@@ -58,6 +66,29 @@ router.get('/view', (req, res) => {
 
     res.setHeader('Content-Disposition', 'inline');
     res.sendFile(fullPath);
+  } catch (err) {
+    res.status(err.status || 404).json({ error: err.message || 'File not found' });
+  }
+});
+
+// POST /api/files/view-token  { path: "some/video.mp4" }
+// Mints a short-lived (2h) view token scoped to exactly this one file, so
+// the frontend can point <video>/<audio> straight at GET /api/files/view
+// for real streaming/seeking instead of buffering the whole file into a
+// blob first. Requires the normal login session, same as every other route.
+router.post('/view-token', express.json(), (req, res) => {
+  try {
+    const relPath = req.body.path;
+    if (!relPath) return res.status(400).json({ error: 'path is required' });
+
+    const fullPath = resolveSafePath(req.userRoot, relPath);
+    const stat = fs.statSync(fullPath);
+    if (stat.isDirectory()) {
+      return res.status(400).json({ error: 'Cannot stream a directory' });
+    }
+
+    const token = signViewToken(req.user, relPath);
+    res.json({ token });
   } catch (err) {
     res.status(err.status || 404).json({ error: err.message || 'File not found' });
   }

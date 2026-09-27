@@ -58,6 +58,16 @@ export const api = {
 
   folderSize: (path) => request(`/files/size?path=${encodeURIComponent(path)}`),
 
+  // Short-lived (2h), single-file view token — lets <video>/<audio> stream
+  // straight from /files/view (real seeking, no full-file buffering) without
+  // the element needing to send our normal Authorization header.
+  viewToken: (path) =>
+    request('/files/view-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path })
+    }),
+
   search: (basePath, query) =>
     request(`/files/search?path=${encodeURIComponent(basePath)}&q=${encodeURIComponent(query)}`),
 
@@ -65,8 +75,10 @@ export const api = {
 
   // Fetches a file through the normal authenticated request (Authorization
   // header, never in the URL) and hands back a local blob URL the browser
-  // can use as an <img>/<video>/<audio>/<iframe> src. Caller must call
-  // URL.revokeObjectURL() on it once no longer needed.
+  // can use as an <img>/<iframe> src. Caller must call URL.revokeObjectURL()
+  // on it once no longer needed. Used for images/PDFs, which are small
+  // enough that buffering the whole thing up front is fine; video/audio use
+  // viewToken() + a direct <video>/<audio> src instead, for real streaming.
   getPreviewUrl: async (path) => {
     const res = await request(`/files/view?path=${encodeURIComponent(path)}`);
     const blob = await res.blob();
