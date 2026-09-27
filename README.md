@@ -10,7 +10,7 @@ cloud-storage/
 └── frontend/    React (Vite) UI: login, tree sidebar, file list, drag-and-drop upload
 ```
 
-**Features:** authentication, browse/upload/download, inline preview for images/video/audio/PDF/text with swipe/arrow navigation between files, rename, recursive search within a folder and its subfolders, recursive folder-size display, responsive layout (mobile drawer sidebar, adaptive columns), per-user storage roots, and a live disk-usage indicator.
+**Features:** authentication, browse/upload/download, inline preview for images/video/audio/PDF/text with swipe/arrow navigation between files, rename, sorting by name/date/size, recursive search within a folder and its subfolders, recursive folder-size display, responsive layout (mobile drawer sidebar, adaptive columns), per-user storage roots, and a live disk-usage indicator. Uploaded files keep their original date (EXIF capture date for photos, otherwise the source file's own last-modified date) instead of being stamped with the upload time.
 
 **Requirements:** Node.js **18.15+** (the disk-usage indicator uses `fs.statfsSync`, added in that version). Check with `node -v`; if it's older, install a newer Node via [nvm](https://github.com/nvm-sh/nvm) rather than relying on Ubuntu's default `apt` package, which is often behind.
 

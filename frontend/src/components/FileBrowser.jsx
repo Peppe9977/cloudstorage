@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import Breadcrumb from './Breadcrumb.jsx';
 import SearchBar from './SearchBar.jsx';
+import SortControl from './SortControl.jsx';
 import FileList from './FileList.jsx';
 import PreviewModal from './PreviewModal.jsx';
 
@@ -19,18 +20,41 @@ export default function FileBrowser({ currentPath, onNavigate, onTreeChanged }) 
   const [folderSizes, setFolderSizes] = useState({});
   const requestedSizes = useRef(new Set());
 
+  const [sortKey, setSortKey] = useState('name'); // 'name' | 'date' | 'size'
+  const [sortDir, setSortDir] = useState('asc');
+
   const fileInputRef = useRef(null);
   const dragCounter = useRef(0);
 
   const searchActive = searchQuery.trim() !== '';
   const displayEntries = searchActive ? searchResults || [] : entries;
 
-  // Only files (not folders) are part of the swipeable preview sequence.
-  const fileEntries = displayEntries.filter((e) => e.type === 'file');
-
   function resolveEntryPath(entry) {
     return searchActive ? entry.path : currentPath ? `${currentPath}/${entry.name}` : entry.name;
   }
+
+  // Folders always come first (their "size" is a lazily-fetched, sometimes
+  // still-loading aggregate, not a directly comparable number the way file
+  // size/date are), then files are ordered by whichever column is selected.
+  function sortValue(entry) {
+    if (sortKey === 'date') return new Date(entry.modified).getTime();
+    if (sortKey === 'size') return entry.type === 'directory' ? 0 : entry.size || 0;
+    return entry.name.toLowerCase();
+  }
+
+  const sortedEntries = [...displayEntries].sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+    const factor = sortDir === 'asc' ? 1 : -1;
+    const av = sortValue(a);
+    const bv = sortValue(b);
+    if (av < bv) return -factor;
+    if (av > bv) return factor;
+    return a.name.localeCompare(b.name) * factor;
+  });
+
+  // Only files (not folders) are part of the swipeable preview sequence;
+  // ordered to match what's on screen so Next/Prev follow the visible order.
+  const fileEntries = sortedEntries.filter((e) => e.type === 'file');
 
   // Folder sizes are cached per path; any change to the contents makes them stale,
   // so forget what was requested and let the refreshed list re-fetch them.
@@ -185,11 +209,21 @@ export default function FileBrowser({ currentPath, onNavigate, onTreeChanged }) 
           </div>
         </div>
 
-        <SearchBar
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder={`Search in ${currentPath || 'Storage'} and subfolders…`}
-        />
+        <div style={styles.secondRow}>
+          <SearchBar
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder={`Search in ${currentPath || 'Storage'} and subfolders…`}
+          />
+          <SortControl
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onChange={(key, dir) => {
+              setSortKey(key);
+              setSortDir(dir);
+            }}
+          />
+        </div>
       </div>
 
       <div className={`dropzone ${dragActive ? 'active' : ''} browser-content`} style={styles.content}>
@@ -197,7 +231,7 @@ export default function FileBrowser({ currentPath, onNavigate, onTreeChanged }) 
           <div style={styles.loading}>{searchActive ? 'Searching…' : 'Loading…'}</div>
         ) : (
           <FileList
-            entries={displayEntries}
+            entries={sortedEntries}
             currentPath={currentPath}
             searchMode={searchActive}
             onOpenFolder={onNavigate}
@@ -283,6 +317,7 @@ const styles = {
     gap: 10
   },
   actions: { display: 'flex', gap: 8, flexWrap: 'wrap', flexShrink: 0 },
+  secondRow: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   content: { flex: 1, margin: '14px 24px 24px', padding: '10px 0', overflowY: 'auto' },
   loading: { padding: '40px', color: 'var(--text-muted)', fontSize: 13 },
   uploadPanel: {

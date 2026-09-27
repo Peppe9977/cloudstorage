@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const exifr = require('exifr');
 const { requireAuth } = require('../middleware/auth');
 const {
   STORAGE_ROOT,
@@ -216,11 +217,48 @@ const storage = multer.diskStorage({
 const maxUploadBytes = (parseInt(process.env.MAX_UPLOAD_MB, 10) || 2048) * 1024 * 1024;
 const upload = multer({ storage, limits: { fileSize: maxUploadBytes } });
 
+const EXIF_DATE_EXT = new Set(['.jpg', '.jpeg', '.tiff', '.tif', '.heic', '.heif']);
+
+// Figures out the file's "real" date — when a photo was actually taken, or
+// when a document was last touched on the device it came from — rather than
+// leaving it stamped with the moment it happened to be uploaded.
+async function resolveOriginalDate(filePath, lastModifiedField) {
+  // For photos, EXIF's capture date is the most reliable source: it's set
+  // by the camera itself and survives being copied, synced or re-uploaded.
+  if (EXIF_DATE_EXT.has(path.extname(filePath).toLowerCase())) {
+    try {
+      const exif = await exifr.parse(filePath, ['DateTimeOriginal', 'CreateDate']);
+      if (exif?.DateTimeOriginal) return exif.DateTimeOriginal;
+      if (exif?.CreateDate) return exif.CreateDate;
+    } catch (_e) {
+      // Not readable/valid EXIF — fall through to the browser-supplied date.
+    }
+  }
+
+  // Otherwise, fall back to the file's own last-modified date on the device
+  // it was uploaded from (the browser sends this as `file.lastModified`).
+  if (lastModifiedField) {
+    const ms = parseInt(lastModifiedField, 10);
+    if (!Number.isNaN(ms)) return new Date(ms);
+  }
+
+  return null;
+}
+
 // POST /api/files/upload?path=some/folder   (multipart field name: "file")
-router.post('/upload', upload.single('file'), (req, res) => {
+router.post('/upload', upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file received' });
   }
+
+  try {
+    const originalDate = await resolveOriginalDate(req.file.path, req.body.lastModified);
+    if (originalDate) fs.utimesSync(req.file.path, originalDate, originalDate);
+  } catch (err) {
+    // Non-fatal — the file itself is already saved successfully.
+    console.error('Failed to set original file date:', err);
+  }
+
   res.json({
     success: true,
     file: {

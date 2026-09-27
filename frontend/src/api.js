@@ -110,6 +110,10 @@ export const api = {
 
       const formData = new FormData();
       formData.append('file', file);
+      // The file's own last-modified date on the device it came from (e.g. a
+      // phone's photo timestamp) — the backend uses it, or EXIF data when
+      // present, to keep that date instead of stamping the upload time.
+      if (file.lastModified) formData.append('lastModified', String(file.lastModified));
       xhr.send(formData);
     })
 };
